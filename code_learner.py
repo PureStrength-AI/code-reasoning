@@ -28,7 +28,11 @@ init_system_prompt = """Now you are an expert programmer and teacher of a code r
 system_prompt = init_system_prompt
 
 
-def generate_response(system_msg, inputs, top_p, temperature, chat_counter, chatbot=[], history=[]):
+def generate_response(system_msg, inputs, chatbot=[], history=[]):
+    top_p = 0.5
+    temperature = 0.5
+    chat_counter = 0
+    
     orig_inputs = inputs
 
     # Inputs are pre-processed with extra tools
@@ -225,9 +229,9 @@ def main():
                     ],
                     inputs=inputs)
 
-        inputs.submit(generate_response, [system_msg, inputs, 0.5, 0.5, 0, chatbot, state], [chatbot, state, 0])
-        b1.click(generate_response, [system_msg, inputs, 0.5, 0.5, 0, chatbot, state], [chatbot, state, 0])
-        
+        inputs.submit(generate_response, [system_msg, inputs], [chatbot, state])
+        b1.click(generate_response, [system_msg, inputs], [chatbot, state])        
+
         inputs.submit(set_visible_false, [], [system_msg])
         b1.click(set_visible_false, [], [system_msg])
         inputs.submit(set_visible_true, [], [accordion_msg])
