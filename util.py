@@ -7,7 +7,6 @@ from langchain.schema import HumanMessage, SystemMessage
 
 load_dotenv(find_dotenv())
 
-
 def get_chat_response(system_prompt, user_prompt, tool_planner=False):
     # By default, use the local LLM
     llm_type = os.environ.get('LLM_TYPE', "local")

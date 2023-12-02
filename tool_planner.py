@@ -71,6 +71,7 @@ def extract_function_name(input):
 
 
 def user_input_handler(input):
+    print("INPUT IS THIS INPUT IS THIS \n-> ", input)
     tool = tool_selection(input)
     print(colored(f"Tool selected: {tool}", "green"))
     if tool == "Code_Searcher":
