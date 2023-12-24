@@ -6,14 +6,15 @@ from termcolor import colored
 from repo_parser import clone_repo, generate_or_load_knowledge_from_repo
 import tool_planner
 
-llm_type = os.environ.get('LLM_TYPE', "local")
+llm_type = os.environ.get('CODE_LLM', "local")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "null")
 if llm_type == "local":
-    API_URL = "http://localhost:8080/v1/chat/completions"
-    model = "ggml-gpt4all-j"
+    API_URL = "http://localhost:11434/api/chat"
+    model = "codellama"
 else:
     API_URL = "https://api.openai.com/v1/chat/completions"
-    model = "gpt-4"
+    model = "gpt-4-1106-preview"
+    # model = "gpt-4-23k"
 
 code_repo_path = "./code_repo"
 
@@ -26,24 +27,21 @@ init_system_prompt = """Now you are an expert programmer and teacher of a code r
     If you need any details clarified, please ask questions until all issues are clarified. \n\n
 """
 system_prompt = init_system_prompt
+all_raw_inputs = []
 
-
-def generate_response(system_msg, inputs, chatbot=[], history=[]):
-    top_p = 0.5
-    temperature = 0.5
-    chat_counter = 0
-    
+def generate_response(system_msg, inputs, top_p, temperature, chat_counter, chatbot=[], history=[]):
+    print("API URL: ", API_URL, "Model: ", model)
     orig_inputs = inputs
-
+    all_raw_inputs.append(orig_inputs)
     # Inputs are pre-processed with extra tools
-    inputs = tool_planner.user_input_handler(inputs)
+    inputs = tool_planner.user_input_handler(all_raw_inputs)
 
     print("Inputs Length: ", len(inputs))
     # Add checker for the input length to fitin the GPT model window size
     if llm_type == "local":
         token_limit = 2000
     else:
-        token_limit = 8000
+        token_limit = 128000
     if len(inputs) > token_limit:
         inputs = inputs[:token_limit]
 
@@ -52,13 +50,9 @@ def generate_response(system_msg, inputs, chatbot=[], history=[]):
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
 
-    if system_msg.strip() == '':
-        initial_message = [{"role": "user", "content": f"{inputs}"}]
-        multi_turn_message = []
-    else:
-        initial_message = [{"role": "system", "content": system_msg},
-                           {"role": "user", "content": f"{inputs}"}]
-        multi_turn_message = [{"role": "system", "content": init_system_prompt}]
+    initial_message = [{"role": "system", "content": init_system_prompt},
+                        {"role": "user", "content": f"{inputs}"}]
+    multi_turn_message = [{"role": "system", "content": init_system_prompt}]
 
     if chat_counter == 0:
         payload = {
@@ -88,55 +82,77 @@ def generate_response(system_msg, inputs, chatbot=[], history=[]):
             "n": 1,
             "stream": True,
             "presence_penalty": 0,
-            "frequency_penalty": 0, }
+            "frequency_penalty": 0, 
+        }
 
     chat_counter += 1
     history.append(orig_inputs)
     print(colored("Orig input from the user: ", "green"), colored(orig_inputs, "green"))
     print(colored("Input with tools: ", "blue"), colored(inputs, "blue"))
     response = requests.post(API_URL, headers=headers, json=payload, stream=True)
-    print(colored("Payload: ", "yellow"), colored(payload, "yellow"))
-    print(colored("Response: ", "yellow"), colored(response, "yellow"))
     token_counter = 0
     partial_words = ""
 
     response_complete = False
-
     counter = 0
-    for chunk in response.iter_lines():
-        if counter == 0:
-            counter += 1
-            continue
 
-        if response_complete:
-            print(colored("Response: ", "yellow"), colored(partial_words, "yellow"))
-
-        if chunk.decode():
-            chunk = chunk.decode()
-            if chunk.startswith("error:"):
-                print(colored("Chunk: ", "red"), colored(chunk, "red"))
-
-            # Check if the chatbot is done generating the response
+    if model == "codellama":
+        for chunk in response.iter_lines():
+            decoded_chunk = chunk.decode()
             try:
-                if len(chunk) > 12 and "finish_reason" in json.loads(chunk[6:])['choices'][0]:
-                    response_complete = json.loads(chunk[6:])['choices'][0].get("finish_reason", None) == "stop"
-            except Exception as e:
-                print("Error in response_complete check", e)
-                pass
+                chunk_json = json.loads(decoded_chunk)
+            except json.JSONDecodeError:
+                print(colored("Error decoding JSON from response part", "red"))
+                continue
 
-            try:
-                if len(chunk) > 12 and "content" in json.loads(chunk[6:])['choices'][0]['delta']:
-                    partial_words = partial_words + json.loads(chunk[6:])['choices'][0]["delta"]["content"]
-                    if token_counter == 0:
-                        history.append(" " + partial_words)
-                    else:
-                        history[-1] = partial_words
-                    chat = [(history[i], history[i + 1]) for i in range(0, len(history) - 1, 2)]
-                    token_counter += 1
-                    yield chat, history, chat_counter, response
-            except Exception as e:
-                print("Error in partial_words check", e)
-                pass
+            if chunk_json.get("done", False):
+                response_complete = True
+                print(colored("Response: ", "yellow"), colored(partial_words, "yellow"))
+            else:
+                partial_words += chunk_json["message"]["content"]
+            
+            if token_counter == 0:
+                history.append(" " + partial_words)
+            else:
+                history[-1] = partial_words
+            chat = [(history[i], history[i + 1]) for i in range(0, len(history) - 1, 2)]
+            token_counter += 1
+            yield chat, history, chat_counter, response
+
+    else:
+        for chunk in response.iter_lines():
+            if counter == 0:
+                counter += 1
+                continue
+
+            if response_complete:
+                print(colored("Response: ", "yellow"), colored(partial_words, "yellow"))
+
+            if chunk.decode():
+                chunk = chunk.decode()
+                if chunk.startswith("error:"):
+                    print(colored("Chunk: ", "red"), colored(chunk, "red"))
+
+                # Check if the chatbot is done generating the response
+                try:
+                    if len(chunk) > 12 and "finish_reason" in json.loads(chunk[6:])['choices'][0]:
+                        response_complete = json.loads(chunk[6:])['choices'][0].get("finish_reason", None) == "stop"
+                except:
+                    print("Error in response_complete check")
+                    pass
+                try:
+                    if len(chunk) > 12 and "content" in json.loads(chunk[6:])['choices'][0]['delta']:
+                        partial_words = partial_words + json.loads(chunk[6:])['choices'][0]["delta"]["content"]
+                        if token_counter == 0:
+                            history.append(" " + partial_words)
+                        else:
+                            history[-1] = partial_words
+                        chat = [(history[i], history[i + 1]) for i in range(0, len(history) - 1, 2)]
+                        token_counter += 1
+                        yield chat, history, chat_counter, response
+                except:
+                    print("Error in partial_words check")
+                    pass
 
 
 def reset_textbox():
@@ -164,7 +180,7 @@ def analyze_repo(repo_url, progress=gr.Progress()):
         return init_system_prompt, "Analysis failed"
 
 def main():
-    title = """<h1 align="center">Code reasoning assistant</h1>"""
+    title = """<h1 align="center">GPT-Code-Learner</h1>"""
 
     system_msg_info = """A conversation could begin with a system message to gently instruct the assistant."""
 
@@ -173,12 +189,12 @@ def main():
     with gr.Blocks(
             css="""#col_container { margin-left: auto; margin-right: auto;} #chatbot {height: 520px; overflow: auto;}""",
             theme=theme,
-            title="Code reasoning assistant",
+            title="GPT-Code-Learner",
     ) as demo:
         gr.HTML(title)
 
         with gr.Column(elem_id="col_container"):
-            with gr.Accordion(label="System message:", open=True):
+            with gr.Accordion(label="System message:", open=False):
                 system_msg = gr.Textbox(
                     label="Instruct the AI Assistant to set its beaviour",
                     info=system_msg_info,
@@ -206,7 +222,7 @@ def main():
             with gr.Row():
                 with gr.Column(scale=10):
                     chatbot = gr.Chatbot(
-                        label='Code reasoning assistant',
+                        label='GPT-Code-Learner',
                         elem_id="chatbot"
                     )
 
@@ -229,8 +245,17 @@ def main():
                     ],
                     inputs=inputs)
 
-        inputs.submit(generate_response, [system_msg, inputs], [chatbot, state])
-        b1.click(generate_response, [system_msg, inputs], [chatbot, state])        
+            with gr.Accordion("Parameters", open=False):
+                top_p = gr.Slider(minimum=-0, maximum=1.0, value=0.5, step=0.05, interactive=True,
+                                  label="Top-p (nucleus sampling)", )
+                temperature = gr.Slider(minimum=-0, maximum=5.0, value=0.5, step=0.1, interactive=True,
+                                        label="Temperature", )
+                chat_counter = gr.Number(value=0, visible=True, precision=0)
+
+        inputs.submit(generate_response, [system_msg, inputs, top_p, temperature, chat_counter, chatbot, state],
+                      [chatbot, state, chat_counter], )
+        b1.click(generate_response, [system_msg, inputs, top_p, temperature, chat_counter, chatbot, state],
+                 [chatbot, state, chat_counter], )
 
         inputs.submit(set_visible_false, [], [system_msg])
         b1.click(set_visible_false, [], [system_msg])
@@ -239,6 +264,7 @@ def main():
 
         b1.click(reset_textbox, [], [inputs])
         inputs.submit(reset_textbox, [], [inputs])
+
     demo.queue(max_size=99, concurrency_count=20).launch(debug=True)
 
 

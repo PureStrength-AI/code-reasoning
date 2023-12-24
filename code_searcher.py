@@ -19,7 +19,7 @@ def extract_grep_output(line):
         return ["", "", line]
 
 
-def search_function_with_context(function_name, before_lines=5, after_lines=10, search_dir="./code_repo"):
+def search_function_with_context(function_name, before_lines=50, after_lines=100, search_dir="./code_repo"):
     command = [
         "grep",
         "-r",  # Recursive search
@@ -31,7 +31,11 @@ def search_function_with_context(function_name, before_lines=5, after_lines=10, 
     ]
 
     # Run the command and capture the output
-    result = subprocess.run(command, capture_output=True, text=True)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True)
+    except:
+        print("Error: grep command failed.")
+        return []
 
     # Split the output by lines
     output_lines = result.stdout.splitlines()

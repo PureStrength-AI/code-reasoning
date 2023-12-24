@@ -15,6 +15,7 @@ from langchain.chains import VectorDBQAWithSourcesChain
 from langchain.embeddings.base import Embeddings
 from sentence_transformers import SentenceTransformer
 from termcolor import colored
+from langchain.text_splitter import Language
 
 
 class LocalHuggingFaceEmbeddings(Embeddings):
@@ -29,52 +30,47 @@ class LocalHuggingFaceEmbeddings(Embeddings):
         embedding = self.model.encode(text)
         return list(map(float, embedding))
 
+def are_all_import_statements(content):
+    lines = content.split('\n')
+    return all(line.strip().startswith(('import', 'from')) for line in lines)
+
 def load_documents(filenames):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=200,
-        length_function=len,
+    swift_splitter = RecursiveCharacterTextSplitter.from_language(
+        language=Language.SWIFT, chunk_size=4000, chunk_overlap=400
     )
+    python_splitter = RecursiveCharacterTextSplitter.from_language(
+        language=Language.PYTHON, chunk_size=4000, chunk_overlap=400
+    )
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=4000, chunk_overlap=400, length_function=len,
+    )
+
     docs = []
+
     for filename in filenames:
-        if filename.endswith(".pdf"):
-            loader = PyPDFLoader(filename)
+        if filename.endswith(".py"):
+            loader = TextLoader(filename)
+            documents = loader.load()
+            splits = python_splitter.split_documents(documents)
+            docs.extend(splits)
+        elif filename.endswith(".swift"):
+            loader = TextLoader(filename)
+            documents = loader.load()
+            splits = swift_splitter.split_documents(documents)
+            for split in splits:
+                if are_all_import_statements(split.page_content):
+                    print("ONLY IMPORT STATEMENTS")
+                    print(split.page_content)
+                else:
+                    docs.append(split)
         else:
             loader = TextLoader(filename)
-        documents = loader.load()
-        splits = text_splitter.split_documents(documents)
-        docs.extend(splits)
+            documents = loader.load()
+            splits = text_splitter.split_documents(documents)
+            docs.extend(splits)
+            
         print(f"Split {filename} into {len(splits)} chunks")
     return docs
-
-
-def load_urls(urls):
-    text_splitter = CharacterTextSplitter(chunk_size=1500, separator="\n")
-    docs, metadatas = [], []
-    for url in urls:
-        html = requests.get(url).text
-        soup = BeautifulSoup(html, features="html.parser")
-        text = soup.get_text()
-        lines = (line.strip() for line in text.splitlines())
-        page_content = '\n'.join(line for line in lines if line)
-
-        splits = text_splitter.split_text(page_content)
-        docs.extend(splits)
-        metadatas.extend([{"source": url}] * len(splits))
-        print(f"Split {url} into {len(splits)} chunks")
-    return docs, metadatas
-
-
-def load_code_chunks(chunks, filepath):
-    text_splitter = CharacterTextSplitter(chunk_size=1500, separator="\n")
-    docs, metadatas = [], []
-    for chunk in chunks:
-        splits = text_splitter.split_text(chunk)
-        docs.extend(splits)
-        metadatas.extend([{"source": filepath}] * len(splits))
-    print(f"Split {filepath} into {len(docs)} pieces")
-    return docs, metadatas
-
 
 def local_vdb(knowledge, vdb_path=None):
     embedding_type = os.environ.get('EMBEDDING_TYPE', "local")
@@ -110,33 +106,33 @@ def supabase_vdb(knowledge):
     return vector_store
 
 
-if __name__ == "__main__":
-    load_dotenv(find_dotenv())
-    openai.api_key = os.environ.get("OPENAI_API_KEY", "null")
+# if __name__ == "__main__":
+    # load_dotenv(find_dotenv())
+    # openai.api_key = os.environ.get("OPENAI_API_KEY", "null")
 
-    query = "What is the usage of this repo?"
-    files = ["./README.md"]
-    urls = ["https://github.com/JinghaoZhao/GPT-Code-Learner"]
+    # query = "What is the usage of this repo?"
+    # files = ["./README.md"]
+    # urls = ["https://github.com/JinghaoZhao/GPT-Code-Learner"]
 
-    known_docs = load_documents(files)
-    known_pages, metadatas = load_urls(urls)
+    # known_docs = load_documents(files)
+    # known_pages, metadatas = load_urls(urls)
 
-    knowledge_base = {"known_docs": known_docs, "known_text": {"pages": known_pages, "metadatas": metadatas}}
+    # knowledge_base = {"known_docs": known_docs, "known_text": {"pages": known_pages, "metadatas": metadatas}}
 
-    faiss_store = local_vdb(knowledge_base)
-    matched_docs = faiss_store.similarity_search(query)
-    for doc in matched_docs:
-        print("------------------------\n", doc)
+    # faiss_store = local_vdb(knowledge_base)
+    # matched_docs = faiss_store.similarity_search(query)
+    # for doc in matched_docs:
+    #     print("------------------------\n", doc)
 
-    supabase_store = supabase_vdb(knowledge_base)
-    matched_docs = supabase_store.similarity_search(query)
-    for doc in matched_docs:
-        print("------------------------\n", doc)
+    # supabase_store = supabase_vdb(knowledge_base)
+    # matched_docs = supabase_store.similarity_search(query)
+    # for doc in matched_docs:
+    #     print("------------------------\n", doc)
 
-    chain = VectorDBQAWithSourcesChain.from_llm(llm=OpenAI(temperature=0), vectorstore=faiss_store)
-    result = chain({"question": query})
-    print("FAISS result", result)
+    # chain = VectorDBQAWithSourcesChain.from_llm(llm=OpenAI(temperature=0), vectorstore=faiss_store)
+    # result = chain({"question": query})
+    # print("FAISS result", result)
 
-    chain = VectorDBQAWithSourcesChain.from_llm(llm=OpenAI(temperature=0), vectorstore=supabase_store)
-    result = chain({"question": query})
-    print("Supabase result", result)
+    # chain = VectorDBQAWithSourcesChain.from_llm(llm=OpenAI(temperature=0), vectorstore=supabase_store)
+    # result = chain({"question": query})
+    # print("Supabase result", result)

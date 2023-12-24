@@ -3,12 +3,17 @@ import json
 import openai
 from termcolor import colored
 from dotenv import load_dotenv, find_dotenv
-from knowledge_base import load_documents, load_code_chunks, supabase_vdb, local_vdb, load_local_vdb
+from knowledge_base import load_documents, supabase_vdb, local_vdb, load_local_vdb
 from collections import deque
 from pathlib import Path
 import util
 import subprocess
 import gradio as gr
+from llama_index.indices.query.schema import QueryBundle, QueryType
+from llama_index.schema import NodeWithScore
+from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
+from llama_index.indices.postprocessor import SentenceTransformerRerank
+from llama_index.finetuning.embeddings.common import EmbeddingQAFinetuneDataset
 
 
 def clone_repo(git_url, progress=gr.Progress(), code_repo_path="./code_repo"):
@@ -24,33 +29,30 @@ def clone_repo(git_url, progress=gr.Progress(), code_repo_path="./code_repo"):
         print(f"Error: {e.output}")
 
     print(progress(0.3, desc="Summarizing the repo..."))
-    readme_info = get_readme(code_repo_path)
-    if readme_info is not None:
-        readme_info = """The README.md file is as follows: """ + readme_info + "\n\n"
+    # readme_info = get_readme(code_repo_path)
+    # if readme_info is not None:
+    #     readme_info = """The README.md file is as follows: """ + readme_info + "\n\n"
 
     print(progress(0.4, desc="Parsing repo structure..."))
     repo_structure = get_repo_structure(code_repo_path)
     if repo_structure is not None:
         repo_structure = """The repo structure is as follows: """ + get_repo_structure(code_repo_path) + "\n\n"
 
-    return readme_info + repo_structure
+    return repo_structure
 
 
 def generate_knowledge_from_repo(dir_path, ignore_list):
+    print("Ignore list: ", ignore_list)
     knowledge = {"known_docs": [], "known_text": {"pages": [], "metadatas": []}}
     for root, dirs, files in os.walk(dir_path):
         dirs[:] = [d for d in dirs if d not in ignore_list]  # modify dirs in-place
         for file in files:
-            if file in ignore_list:
-                continue
-            filepath = os.path.join(root, file)
-            try:
-                # Using a more general way for code file parsing
-                knowledge["known_docs"].extend(load_documents([filepath]))
-
-            except Exception as e:
-                print(f"Failed to process {filepath} due to error: {str(e)}")
-
+            if file.endswith(tuple(ignore_list)):
+                filepath = os.path.join(root, file)
+                try:
+                    knowledge["known_docs"].extend(load_documents([filepath]))
+                except Exception as e:
+                    print(f"Failed to process {filepath} due to error: {str(e)}")
     return knowledge
 
 
@@ -77,24 +79,7 @@ def find_readme(repo_folder):
     print("README not found in folder:", repo_folder)
     return None
 
-
-# summarize the README file
-def summarize_readme(readme_path):
-    if readme_path:
-        print(colored("Summarizing README...", "green"))
-
-        system_prompt = """You are an expert developer and programmer. 
-            Please infer the programming languages from the README.
-            You are asked to summarize the README file of the code repository in detail. 
-            Provide enough information about the code repository.
-            Please also mention the framework used in the code repository.
-            """
-        readme_content = open(readme_path, "r").read()
-        user_prompt = f'Here is the README content: {readme_content}'
-        return util.get_chat_response(system_prompt, user_prompt)
-
-
-def bfs_folder_search(text_length_limit=4000, folder_path="./code_repo"):
+def bfs_folder_search(text_length_limit=40000, folder_path="./code_repo"):
     if not Path(folder_path).is_dir():
         return "Invalid directory path"
 
@@ -128,18 +113,6 @@ def bfs_folder_search(text_length_limit=4000, folder_path="./code_repo"):
     return json.dumps(file_structure)
 
 
-def get_readme(code_repo_path="./code_repo"):
-    repo_folder = find_repo_folder(code_repo_path)
-    print(colored("Repo folder: " + repo_folder, "green"))
-    readme_path = find_readme(repo_folder)
-    if readme_path is None:
-        return "README not found"
-    else:
-        summary = summarize_readme(readme_path)
-        print(colored("README Summary: ", "green"), colored(summary, "green"))
-        return summary
-
-
 def get_repo_structure(code_repo_path="./code_repo"):
     return bfs_folder_search(4000, code_repo_path)
 
@@ -158,8 +131,7 @@ def generate_or_load_knowledge_from_repo(dir_path="./code_repo"):
         vdb = load_local_vdb(vdb_path)
     else:
         print(colored("Generating VDB from repo...", "green"))
-        ignore_list = ['.git', 'node_modules', '__pycache__', '.idea',
-                       '.vscode']
+        ignore_list = [".swift", ".md"]
         knowledge = generate_knowledge_from_repo(dir_path, ignore_list)
         vdb = local_vdb(knowledge, vdb_path=vdb_path)
     print(colored("VDB generated!", "green"))
@@ -167,7 +139,11 @@ def generate_or_load_knowledge_from_repo(dir_path="./code_repo"):
 
 
 def get_repo_context(query, vdb):
-    matched_docs = vdb.similarity_search(query, k=10)
+    matched_docs = vdb.similarity_search(query, k=100)
+    # print("BEFORE RERANKING: ", matched_docs)
+    # reranker = SentenceTransformerRerank(model="BAAI/bge-reranker-large", top_n=5)
+
+
     output = ""
     for idx, docs in enumerate(matched_docs):
         output += f"Context {idx}:\n"
@@ -184,7 +160,7 @@ if __name__ == '__main__':
     print(get_repo_names(code_repo_path))
 
     # Basic repo information
-    get_readme(code_repo_path)
+    # get_readme(code_repo_path)
     print(colored(bfs_folder_search(4000, code_repo_path), "yellow"))
 
     # Generate knowledge base
