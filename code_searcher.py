@@ -18,8 +18,13 @@ def extract_grep_output(line):
     else:
         return ["", "", line]
 
+def search_functions_with_context(function_names, before_lines=50, after_lines=100, search_dir="./code_repo"):
+    mega_oc = []
+    for function_name in function_names:
+        mega_oc.append(search_function_with_context(function_name, before_lines=before_lines, after_lines=after_lines, search_dir=search_dir))
+    return mega_oc
 
-def search_function_with_context(function_name, before_lines=50, after_lines=100, search_dir="./code_repo"):
+def search_function_with_context(function_name, before_lines=50, after_lines=400, search_dir="./code_repo"):
     command = [
         "grep",
         "-r",  # Recursive search
@@ -74,10 +79,24 @@ def get_function_context(function_name):
         output += "\n\n"
     return output
 
+def get_functions_context(function_name):
+    results = search_function_with_context(function_name)
+    output = ""
+    for result in results:
+        print("looking at result {}".format(result))
+        for filename, start_line, context in result:
+            output += f"Filename: {filename}\n"
+            output += f"Start line: {start_line}\n"
+            output += "Context:\n"
+            output += context
+            output += "\n\n"
+    return output
+
 
 if __name__ == "__main__":
     function_name = "set_visible_true"
-    results = search_function_with_context(function_name)
+    #results = search_function_with_context(function_name)
+    results = search_functions_with_context(function_names)
 
     for filename, start_line, context in results:
         print(f"Filename: {filename}")
