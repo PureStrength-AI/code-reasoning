@@ -9,6 +9,7 @@ from pathlib import Path
 import util
 import subprocess
 import gradio as gr
+import pickle
 #from llama_index.indices.query.schema import QueryBundle, QueryType
 #from llama_index.schema import NodeWithScore
 #from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
@@ -53,6 +54,8 @@ def generate_knowledge_from_repo(dir_path, ignore_list):
                     knowledge["known_docs"].extend(load_documents([filepath]))
                 except Exception as e:
                     print(f"Failed to process {filepath} due to error: {str(e)}")
+    with open('data_1.pkl', 'wb') as f:
+        pickle.dump(knowledge, f)
     return knowledge
 
 
