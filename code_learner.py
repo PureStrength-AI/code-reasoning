@@ -99,6 +99,9 @@ def generate_response(system_msg, inputs, top_p, temperature, chat_counter, chat
     logging.info(colored("Orig input from the user: ", "green") + colored(orig_inputs, "green"))
 
     print(colored("Input with tools: ", "blue"), colored(inputs, "blue"))
+    #test_without
+    inputs = orig_inputs
+    print('deleting original shit')
     # Log the message with colored text
     logging.info(colored("Input with tools: ", "green") + colored(inputs, "green"))
     response = requests.post(API_URL, headers=headers, json=payload, stream=True)

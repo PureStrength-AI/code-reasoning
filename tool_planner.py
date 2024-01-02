@@ -122,19 +122,34 @@ def user_input_handler(input):
     print(input)
     #hardcode
     # tool = "Code_Searcher"
-    tool = "Repo_Parser"
+    # tool = "Repo_Parser"
     print(colored(f"Tool selected: {tool}", "green"))
-    if "Code_Searcher" in tool:
+    combined_search = True
+    if combined_search:
+        if "Code_Searcher" in tool:
+            function_names = extract_function_names(input)
+            context = ""
+            for function_name in function_names.split(","):
+                func_context = get_function_context(function_name)
+                print(func_context)
+                # search the function with context
+                context += "{function_name}: \n\n" + func_context
+            prompt = input + "\n\n" + "Here are some the contexts of the function or variable" + context
+        else:
+            prompt = input + "\n\n"
+        vdb = generate_or_load_knowledge_from_repo()
+        context = get_repo_context(input, vdb)
+        prompt += f"Here are some contexts about the question, which are ranked by the relevance to the question: \n\n" + context
+        return prompt
+    elif "Code_Searcher" in tool:
         # extract the function or variable name from the input
         # function_name = extract_function_name(input)
         #print(function_name)
-        print('here are the function names')
         function_names = extract_function_names(input)
         context = ""
         for function_name in function_names.split(","):
             print("looking at the function {}".format(function_name))
             func_context = get_function_context(function_name)
-            print('HERERERE')
             print(func_context)
             # search the function with context
             context += "{function_name}: \n\n" + func_context
