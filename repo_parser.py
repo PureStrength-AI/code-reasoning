@@ -9,11 +9,12 @@ from pathlib import Path
 import util
 import subprocess
 import gradio as gr
-from llama_index.indices.query.schema import QueryBundle, QueryType
-from llama_index.schema import NodeWithScore
-from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
-from llama_index.indices.postprocessor import SentenceTransformerRerank
-from llama_index.finetuning.embeddings.common import EmbeddingQAFinetuneDataset
+import pickle
+#from llama_index.indices.query.schema import QueryBundle, QueryType
+#from llama_index.schema import NodeWithScore
+#from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
+#from llama_index.indices.postprocessor import SentenceTransformerRerank
+#from llama_index.finetuning.embeddings.common import EmbeddingQAFinetuneDataset
 
 
 def clone_repo(git_url, progress=gr.Progress(), code_repo_path="./code_repo"):
@@ -53,6 +54,8 @@ def generate_knowledge_from_repo(dir_path, ignore_list):
                     knowledge["known_docs"].extend(load_documents([filepath]))
                 except Exception as e:
                     print(f"Failed to process {filepath} due to error: {str(e)}")
+    with open('data_1.pkl', 'wb') as f:
+        pickle.dump(knowledge, f)
     return knowledge
 
 
@@ -131,7 +134,7 @@ def generate_or_load_knowledge_from_repo(dir_path="./code_repo"):
         vdb = load_local_vdb(vdb_path)
     else:
         print(colored("Generating VDB from repo...", "green"))
-        ignore_list = [".swift", ".md"]
+        ignore_list = [".swift", ".md", ".py"]
         knowledge = generate_knowledge_from_repo(dir_path, ignore_list)
         vdb = local_vdb(knowledge, vdb_path=vdb_path)
     print(colored("VDB generated!", "green"))

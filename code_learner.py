@@ -5,6 +5,9 @@ import os
 from termcolor import colored
 from repo_parser import clone_repo, generate_or_load_knowledge_from_repo
 import tool_planner
+import logging
+
+
 
 llm_type = os.environ.get('CODE_LLM', "local")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "null")
@@ -88,7 +91,19 @@ def generate_response(system_msg, inputs, top_p, temperature, chat_counter, chat
     chat_counter += 1
     history.append(orig_inputs)
     print(colored("Orig input from the user: ", "green"), colored(orig_inputs, "green"))
+    # Configure logging
+    logging.basicConfig(filename='logfile.log', level=logging.INFO,
+                        format='%(asctime)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+    # Log the message with colored text
+    logging.info(colored("Orig input from the user: ", "green") + colored(orig_inputs, "green"))
+
     print(colored("Input with tools: ", "blue"), colored(inputs, "blue"))
+    #test_without
+    inputs = orig_inputs
+    print('deleting original shit')
+    # Log the message with colored text
+    logging.info(colored("Input with tools: ", "green") + colored(inputs, "green"))
     response = requests.post(API_URL, headers=headers, json=payload, stream=True)
     token_counter = 0
     partial_words = ""
@@ -107,7 +122,8 @@ def generate_response(system_msg, inputs, top_p, temperature, chat_counter, chat
 
             if chunk_json.get("done", False):
                 response_complete = True
-                print(colored("Response: ", "yellow"), colored(partial_words, "yellow"))
+                # print(colored("Response: ", "yellow"), colored(partial_words, "yellow"))
+                logging.info("Response: " + partial_words)
             else:
                 partial_words += chunk_json["message"]["content"]
             
@@ -126,7 +142,8 @@ def generate_response(system_msg, inputs, top_p, temperature, chat_counter, chat
                 continue
 
             if response_complete:
-                print(colored("Response: ", "yellow"), colored(partial_words, "yellow"))
+                # print(colored("Response: ", "yellow"), colored(partial_words, "yellow"))
+                logging.info("Response: " + partial_words)
 
             if chunk.decode():
                 chunk = chunk.decode()
@@ -180,7 +197,7 @@ def analyze_repo(repo_url, progress=gr.Progress()):
         return init_system_prompt, "Analysis failed"
 
 def main():
-    title = """<h1 align="center">GPT-Code-Learner</h1>"""
+    title = """<h1 align="center">CodApt - AI coding assistant</h1>"""
 
     system_msg_info = """A conversation could begin with a system message to gently instruct the assistant."""
 
@@ -189,7 +206,7 @@ def main():
     with gr.Blocks(
             css="""#col_container { margin-left: auto; margin-right: auto;} #chatbot {height: 520px; overflow: auto;}""",
             theme=theme,
-            title="GPT-Code-Learner",
+            title="CodApt - AI coding assistant",
     ) as demo:
         gr.HTML(title)
 
@@ -222,7 +239,7 @@ def main():
             with gr.Row():
                 with gr.Column(scale=10):
                     chatbot = gr.Chatbot(
-                        label='GPT-Code-Learner',
+                        label='Code AI Assistant',
                         elem_id="chatbot"
                     )
 

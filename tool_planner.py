@@ -1,4 +1,4 @@
-from code_searcher import get_function_context
+from code_searcher import get_function_context, get_functions_context
 from repo_parser import generate_or_load_knowledge_from_repo, get_repo_context
 from termcolor import colored
 import util
@@ -65,6 +65,28 @@ def extract_function_name(input):
         """ + f'Here is the user input: {input}'
     return util.get_chat_response(system_prompt, user_prompt)
 
+def extract_function_names(input):
+    system_prompt = """You are an expert developer and programmer. """
+    user_prompt = """
+        You will handle user questions about the code repository.
+        Please extract the functions or variable names which have appeared in the question.
+        Only respond the function names without the parameters or any other words.
+        If both function and variable names are mentioned, only extract the function names.
+
+        Below are two examples:
+        - Question: How to use the function extract_function_name?
+        - Answer: extract_function_name
+
+        - Question: How to use the function def supabase_vdb(query, knowledge_base):?
+        - Answer: supabase_vdb 
+        
+        - Question: Can I combine the functions function_1, function_k and function_2?
+        - Answer: function_1,function_k,function_2
+
+        """ + f'Here is the user input: {input}'
+    return util.get_chat_response(system_prompt, user_prompt)
+
+
 def make_relevant_question(input):
     system_prompt = """As an expert developer and programmer, you are adept at understanding and analyzing complex code-related inquiries. Your task is to synthesize user questions into a single, comprehensive question that captures the essence of their inquiries."""
 
@@ -90,23 +112,49 @@ def make_relevant_question(input):
 
 
 def user_input_handler(input):
-    input = input[-5:]
+    #choose how many last questions are remembered
+    input = input[-1:]
     input = input[::-1]
     input = make_relevant_question(input)
     print("Relevant question: ", input)
     tool = tool_selection(input)
+    print('tool selected = ')
+    print(input)
+    #hardcode
+    # tool = "Code_Searcher"
+    # tool = "Repo_Parser"
     print(colored(f"Tool selected: {tool}", "green"))
-    if "Code_Searcher" in tool:
+    combined_search = True
+    if combined_search:
+        if "Code_Searcher" in tool:
+            function_names = extract_function_names(input)
+            context = ""
+            for function_name in function_names.split(","):
+                func_context = get_function_context(function_name)
+                print(func_context)
+                # search the function with context
+                context += "{function_name}: \n\n" + func_context
+            prompt = input + "\n\n" + "Here are some the contexts of the function or variable" + context
+        else:
+            prompt = input + "\n\n"
+        vdb = generate_or_load_knowledge_from_repo()
+        context = get_repo_context(input, vdb)
+        prompt += f"Here are some contexts about the question, which are ranked by the relevance to the question: \n\n" + context
+        return prompt
+    elif "Code_Searcher" in tool:
         # extract the function or variable name from the input
-        function_name = extract_function_name(input)
-        print(function_name)
-        if function_name:
+        # function_name = extract_function_name(input)
+        #print(function_name)
+        function_names = extract_function_names(input)
+        context = ""
+        for function_name in function_names.split(","):
+            print("looking at the function {}".format(function_name))
+            func_context = get_function_context(function_name)
+            print(func_context)
             # search the function with context
-            context = get_function_context(function_name)
-            prompt = input + "\n\n" + \
-                     f"Here are some the contexts of the function or variable {function_name}: \n\n" + context
-            print(prompt)
-            return prompt
+            context += "{function_name}: \n\n" + func_context
+        prompt = input + "\n\n" + "Here are some the contexts of the function or variable" + context
+        return prompt
     elif "Repo_Parser" in tool:
         vdb = generate_or_load_knowledge_from_repo()
         context = get_repo_context(input, vdb)
