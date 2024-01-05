@@ -53,6 +53,7 @@ def extract_function_name(input):
         You will handle user questions about the code repository.
         Please extract the function or variable name appeared in the question.
         Only response the one name without the parameters or any other words.
+        Note that function name cannot have spaces in between.
         If both function and variable names are mentioned, only extract the function name.
 
         Below are two examples:
@@ -62,60 +63,82 @@ def extract_function_name(input):
         - Question: How to use the function def supabase_vdb(query, knowledge_base):?
         - Answer: supabase_vdb 
 
+        - Question: Where is the variable minimum_template being used?
+        - Answer: minimum_template
+
+        - Question: Look at Push API deliveryDeliveredV2 in CourierStatus.ts.
+        - Answer - deliveryDeliveredV2
+
         """ + f'Here is the user input: {input}'
     return util.get_chat_response(system_prompt, user_prompt)
 
 def make_relevant_question(input):
-    system_prompt = """As an expert developer and programmer, you are adept at understanding and analyzing complex code-related inquiries. Your task is to synthesize user questions into a single, comprehensive question that captures the essence of their inquiries."""
+    system_prompt = """
+        As an expert developer and programmer, you are adept at understanding and analyzing complex code-related inquiries. Your task is to synthesize user questions into a single, comprehensive question that captures the essence of their inquiries."""
 
-    user_prompt = f"""
-        Given this set of user inquiries: "{input}"
+    user_prompt = """
+        Given this set of user inquiries: """ + str(input) + """
         Craft a single, integrated question that:
         - Merges the key elements of the user's latest inquiry (index 0) with any pertinent information from earlier inquiries (index 1 and beyond).
         - Provides a more complete context or deeper clarification by combining aspects of these inquiries.
+        - IF THERE IS ANY CODE INCLUDED IN THE QUERIES, RETURN THE ORIGINAL QUESTION AT INDEX 0.
         - ONLY RETURN THE QUESTION. NO OTHER EXPLAINATION.
-        - REMOVE EXPLAINATION LIKE : The integrated question for the given user inquiries is
         - Is formulated as a clear, concise, and complete sentence in question form.
         - Focuses solely on generating the question, without extra commentary or information.
-
+        
         Example:
         - User Inquiries: ["Can you show how to remove placeholders?", "What does the function 'x' do?"]
         - Integrated Question: "How can I remove placeholders while understanding what function 'x' does?"
 
         - User Inquiries: ["How do I implement feature Y?", "What are the prerequisites for feature Y?", "Can you explain the dependencies needed for Y?"]
         - Integrated Question: "What are the necessary prerequisites and dependencies to implement feature Y effectively?"
-        """
-
+    """
     return util.get_chat_response(system_prompt, user_prompt)
 
 
 def user_input_handler(input):
-    input = input[-5:]
+    input = input[-1:]
     input = input[::-1]
-    input = make_relevant_question(input)
+    print("INPUT", input)
+    # input = make_relevant_question(input)
+    input = input[0]
     print("Relevant question: ", input)
-    tool = tool_selection(input)
-    print(colored(f"Tool selected: {tool}", "green"))
-    if "Code_Searcher" in tool:
-        # extract the function or variable name from the input
-        function_name = extract_function_name(input)
-        print(function_name)
-        if function_name:
-            # search the function with context
-            context = get_function_context(function_name)
-            prompt = input + "\n\n" + \
-                     f"Here are some the contexts of the function or variable {function_name}: \n\n" + context
-            print(prompt)
-            return prompt
-    elif "Repo_Parser" in tool:
-        vdb = generate_or_load_knowledge_from_repo()
-        context = get_repo_context(input, vdb)
-        prompt = input + "\n\n" + \
-                 f"Here are some contexts about the question, which are ranked by the relevance to the question: \n\n" + context
-        return prompt
-    else:
-        print("No tool is selected.")
-        return input
+    # tool = tool_selection(input)
+    # tool = "Repo_Parser"
+    function_name = extract_function_name(input)
+    print("EXTRACTED FUNCTION NAME - ", function_name)
+    # print(colored(f"Tool selected: {tool}", "green"))
+    # if "Code_Searcher" in tool:
+    #     # extract the function or variable name from the input
+        
+    #     print("Function name - ", function_name)
+    #     if function_name != 'x':
+    #         # search the function with context
+    #         context = get_function_context(function_name)
+    #         prompt = input + "\n\n" + \
+    #                  f"Here are some the contexts of the function or variable {function_name}: \n\n" + context
+    #         print(prompt)
+    #         return prompt
+    #     else:
+    #         vdb = generate_or_load_knowledge_from_repo()
+    #         context = get_repo_context(input, vdb)
+    #         prompt = input + "\n\n" + \
+    #                 f"Here are some contexts about the question, which are ranked by the relevance to the question: \n\n" + context
+    #         return prompt
+
+    # elif "Repo_Parser" in tool:
+    grep_context = ""
+    if len(function_name) > 3:
+        grep_context = get_function_context(function_name)
+    print("GREP CONTEXT", grep_context)
+    vdb = generate_or_load_knowledge_from_repo()
+    vdb_context = get_repo_context(input, vdb)
+    prompt = input + "\n\n" + \
+                f"Here are some contexts about the question, which are ranked by the relevance to the question: \n\n" + grep_context + vdb_context
+    return prompt
+    # else:
+    #     print("No tool is selected.")
+    #     return input
 
 
 if __name__ == "__main__":

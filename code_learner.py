@@ -14,17 +14,25 @@ if llm_type == "local":
 else:
     API_URL = "https://api.openai.com/v1/chat/completions"
     model = "gpt-4-1106-preview"
-    # model = "gpt-4-23k"
+    # model = "gpt-4"
 
 code_repo_path = "./code_repo"
 
-init_system_prompt = """Now you are an expert programmer and teacher of a code repository. 
+# init_system_prompt = """Now you are an expert programmer and teacher of a code repository. 
+#     You will be asked to explain the code for a specific task in the repo.
+#     You will be provided with some related code snippets or documents related to the question.
+#     Please think about the explanation step-by-step.
+#     Please answer the questions based on your knowledge, and you can also refer to the provided related code snippets.
+#     The README.md file and the repo structure are also available for your reference.
+#     If you need any details clarified, please ask questions until all issues are clarified. \n\n
+# """
+init_system_prompt = """[INST]Now you are an expert programmer and teacher of a code repository. 
     You will be asked to explain the code for a specific task in the repo.
     You will be provided with some related code snippets or documents related to the question.
     Please think about the explanation step-by-step.
     Please answer the questions based on your knowledge, and you can also refer to the provided related code snippets.
     The README.md file and the repo structure are also available for your reference.
-    If you need any details clarified, please ask questions until all issues are clarified. \n\n
+    If you need any details clarified, please ask questions until all issues are clarified. [\INST] \n\n
 """
 system_prompt = init_system_prompt
 all_raw_inputs = []
@@ -39,7 +47,7 @@ def generate_response(system_msg, inputs, top_p, temperature, chat_counter, chat
     print("Inputs Length: ", len(inputs))
     # Add checker for the input length to fitin the GPT model window size
     if llm_type == "local":
-        token_limit = 2000
+        token_limit = 6000
     else:
         token_limit = 128000
     if len(inputs) > token_limit:

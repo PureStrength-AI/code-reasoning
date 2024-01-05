@@ -9,12 +9,14 @@ from pathlib import Path
 import util
 import subprocess
 import gradio as gr
-from llama_index.indices.query.schema import QueryBundle, QueryType
-from llama_index.schema import NodeWithScore
-from llama_index.indices.postprocessor.cohere_rerank import CohereRerank
-from llama_index.indices.postprocessor import SentenceTransformerRerank
-from llama_index.finetuning.embeddings.common import EmbeddingQAFinetuneDataset
-
+import cohere
+# import torch
+# from run import model, tokenizer
+# from llama_index.indices.query.schema import QueryBundle, QueryType
+# from llama_index.schema import NodeWithScore
+# from llama_index.indices.postprocessor import SentenceTransformerRerank
+# from llama_index.finetuning.embeddings.common import EmbeddingQAFinetuneDataset
+co = cohere.Client("VqlHIhTs1QqHQM3nNkt18t0K5sVJQ3ykcqBW0Psz")
 
 def clone_repo(git_url, progress=gr.Progress(), code_repo_path="./code_repo"):
     print(progress(0.1, desc="Cloning the repo..."))
@@ -53,6 +55,7 @@ def generate_knowledge_from_repo(dir_path, ignore_list):
                     knowledge["known_docs"].extend(load_documents([filepath]))
                 except Exception as e:
                     print(f"Failed to process {filepath} due to error: {str(e)}")
+    print("TOTAL DOCS - ", len(knowledge["known_docs"]))
     return knowledge
 
 
@@ -131,23 +134,44 @@ def generate_or_load_knowledge_from_repo(dir_path="./code_repo"):
         vdb = load_local_vdb(vdb_path)
     else:
         print(colored("Generating VDB from repo...", "green"))
-        ignore_list = [".swift", ".md"]
+        ignore_list = [".swift", ".md", ".ts", ".py"]
         knowledge = generate_knowledge_from_repo(dir_path, ignore_list)
         vdb = local_vdb(knowledge, vdb_path=vdb_path)
     print(colored("VDB generated!", "green"))
     return vdb
 
+def pretty_print_docs(docs):
+    print(
+        f"\n{'-' * 100}\n".join(
+            [f"Document {i+1}:\n\n" + d.page_content for i, d in enumerate(docs)]
+        )
+    )
 
 def get_repo_context(query, vdb):
-    matched_docs = vdb.similarity_search(query, k=100)
-    # print("BEFORE RERANKING: ", matched_docs)
-    # reranker = SentenceTransformerRerank(model="BAAI/bge-reranker-large", top_n=5)
+    matched_docs = vdb.similarity_search(query, k=25)
+    # print("BEFORE RERANKING: ")
+    # pretty_print_docs(matched_docs)
+    docs = []
+    for doc in matched_docs:
+        docs.append(doc) 
+    f = [doc.page_content for doc in docs]
+    # with torch.no_grad():
+    #     inputs = tokenizer(all_pairs, padding=True, truncation=True, return_tensors='pt', max_length=512)
+    #     scores = model(**inputs, return_dict=True).logits.view(-1, ).float()
 
+    # indices = torch.argsort(scores, descending=True)[:10]
+    # matched_docs = [matched_docs[idx] for idx in indices]
+    results_rerank = co.rerank(query=query, documents = f, top_n=10, model="rerank-english-v2.0")
+    rerank_docs = [result.document for result in results_rerank.results]
+    # print("RERANKED DOCS:")
 
     output = ""
-    for idx, docs in enumerate(matched_docs):
+    for idx, docs in enumerate(rerank_docs):
         output += f"Context {idx}:\n"
         output += str(docs)
+        # print("DOCUMENT ", idx)
+        # print(docs)
+        # print("-----------------------------------------------------------------")
         output += "\n\n"
     return output
 

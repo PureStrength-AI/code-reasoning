@@ -41,6 +41,9 @@ def load_documents(filenames):
     python_splitter = RecursiveCharacterTextSplitter.from_language(
         language=Language.PYTHON, chunk_size=4000, chunk_overlap=400
     )
+    ts_splitter = RecursiveCharacterTextSplitter.from_language(
+        language=Language.TS, chunk_size=4000, chunk_overlap=400
+    )
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=4000, chunk_overlap=400, length_function=len,
     )
@@ -63,6 +66,11 @@ def load_documents(filenames):
                     print(split.page_content)
                 else:
                     docs.append(split)
+        elif filename.endswith(".ts"):
+            loader = TextLoader(filename)
+            documents = loader.load()
+            splits = ts_splitter.split_documents(documents)
+            docs.extend(splits)
         else:
             loader = TextLoader(filename)
             documents = loader.load()

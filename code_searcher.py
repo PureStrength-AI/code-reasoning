@@ -1,6 +1,6 @@
 import re
 import subprocess
-
+import os
 
 def extract_grep_output(line):
     # Regular expressions to match the grep output lines
@@ -18,8 +18,45 @@ def extract_grep_output(line):
     else:
         return ["", "", line]
 
+def extract_function_context_typescript(search_dir, function_name):
+    # Adjust the regex to match TypeScript function declarations and class methods
+    function_regex = rf'\bfunction\s+{function_name}\s*\('
+    extracted_functions = []
 
-def search_function_with_context(function_name, before_lines=50, after_lines=100, search_dir="./code_repo"):
+    for root, dirs, files in os.walk(search_dir):
+        for file in files:
+            if file.endswith('.ts'):  # Targeting TypeScript files
+                file_path = os.path.join(root, file)
+                print(file_path)
+                with open(file_path, 'r') as f:
+                    lines = f.readlines()
+                    context = []
+                    found = False
+                    brace_count = 0
+                    brace_found = False
+                    for i, line in enumerate(lines):
+                        
+                        if found:
+                            context.append(line)
+                            brace_count += line.count("{")
+                            brace_found = brace_count > 0
+                            brace_count -= line.count("}")
+                            if brace_found == True:
+                                if brace_count == 0:
+                                    extracted_functions.append((file_path, ''.join(context)))
+                                    break
+                        elif re.search(function_regex, line):
+                            print("match")
+                            found = True
+                            line = line.strip()
+                            context.append(line)
+                            brace_count += line.count("{")
+                            brace_found = brace_count > 0
+    return extracted_functions
+
+
+def search_function_with_context(function_name, before_lines=20, after_lines=50, search_dir="./code_repo"):
+    extracted_functions = extract_function_context_typescript(search_dir=search_dir, function_name=function_name)
     command = [
         "grep",
         "-r",  # Recursive search
@@ -43,12 +80,11 @@ def search_function_with_context(function_name, before_lines=50, after_lines=100
     # Group the lines by occurrence
     occurrences = []
     current_filename = None
-    current_start_line = None
     current_lines = []
     for line in output_lines:
         if line.startswith("--"):  # This line separates occurrences
             if current_filename is not None:
-                occurrences.append((current_filename, current_start_line, "\n".join(current_lines)))
+                occurrences.append((current_filename, "\n".join(current_lines)))
             current_lines = []
         else:
             current_filename, line_number, line_text = extract_grep_output(line)
@@ -58,30 +94,36 @@ def search_function_with_context(function_name, before_lines=50, after_lines=100
 
     # Add the last occurrence if there is one
     if current_filename is not None:
-        occurrences.append((current_filename, current_start_line, "\n".join(current_lines)))
+        occurrences.append((current_filename, "\n".join(current_lines)))
 
-    return occurrences
+    return extracted_functions, occurrences
 
 
 def get_function_context(function_name):
-    results = search_function_with_context(function_name)
+    results, occ = search_function_with_context(function_name)
     output = ""
-    for filename, start_line, context in results:
+    for filename, context in results:
         output += f"Filename: {filename}\n"
-        output += f"Start line: {start_line}\n"
         output += "Context:\n"
         output += context
         output += "\n\n"
+
+    for filename, context in occ:
+        output += f"Filename: {filename}\n"
+        output += "Context:\n"
+        output += context
+        output += "\n\n"
+
     return output
 
 
-if __name__ == "__main__":
-    function_name = "set_visible_true"
-    results = search_function_with_context(function_name)
+# if __name__ == "__main__":
+#     function_name = "set_visible_true"
+#     results = search_function_with_context(function_name)
 
-    for filename, start_line, context in results:
-        print(f"Filename: {filename}")
-        print(f"Start line: {start_line}")
-        print("Context:")
-        print(context)
-        print()
+#     for filename, start_line, context in results:
+#         print(f"Filename: {filename}")
+#         print(f"Start line: {start_line}")
+#         print("Context:")
+#         print(context)
+#         print()
